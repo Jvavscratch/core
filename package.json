@@ -1,0 +1,31 @@
+{
+  "name": "@jvavscratch/core",
+  "version": "1.0.0",
+  "description": "jvavscratch核心编译器模块",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "require": "./dist/index.js",
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./env": {
+      "require": "./dist/src/env/index.js",
+      "import": "./dist/src/env/index.js",
+      "types": "./dist/src/env/index.d.ts"
+    },
+    "./util": {
+      "require": "./dist/src/util/index.js",
+      "import": "./dist/src/util/index.js",
+      "types": "./dist/src/util/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@babel/types": "^7.23.6",
+    "@jvavscratch/types": "^1.0.1"
+  }
+}
