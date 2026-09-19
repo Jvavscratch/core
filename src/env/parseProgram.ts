@@ -132,7 +132,7 @@ export function parseProgram(string: string | BlockStatement, sourceFilename: st
 
     if (typeof (string) == "string") {
         try {
-            // 先转换不支持的语法为支持的语法
+            // First rewrite unsupported syntax into supported syntax
             const transformedCode = transformSyntax(string);
             file = babel.parse(transformedCode, { sourceFilename });
             program = file.program.body;
@@ -252,11 +252,15 @@ export function parseProgram(string: string | BlockStatement, sourceFilename: st
         if (nodeType == "EmptyStatement") continue;
         let data: any;
 
-        // 第三方运行时包优先,保持原有语义(可覆盖内置生成器)。
+        // Third-party runtime packages take precedence, preserving the original
+        // semantics (they may override the built-in generators).
         //
-        // 注意循环变量名:原实现内层也用 `i`,遮蔽了外层语句下标,于是
-        // `program[i]` 取的是**实现表的第 i 项**而不是第 i 条语句 —— 配对
-        // 完全错位,只有下标偶然对齐时才命中。这里改用独立的 `k`。
+        // Watch the loop variable name: the original implementation also used `i`
+        // in the inner loop, shadowing the outer statement index, so
+        // `program[i]` fetched the **i-th entry of the implementation table**
+        // rather than the i-th statement -- the pairing was completely
+        // misaligned and only lined up when the indices happened to agree. A
+        // separate `k` is used here.
         let s = false;
         for (let k = 0; k < packageData.statement_implements.length; k++) {
             if (packageData.statement_implements[k].name == nodeType) {

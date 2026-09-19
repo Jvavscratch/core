@@ -12,14 +12,14 @@
 import * as babel from '@babel/core';
 import { Node, IfStatement, BlockStatement, ExpressionStatement, AssignmentExpression, VariableDeclarator, MemberExpression } from '@babel/types';
 
-// 转换选项
+// Transformation options
 const transformOptions: babel.TransformOptions = {
   plugins: [
-    // 自定义插件用于转换不支持的语法
+    // Custom plugin that rewrites syntax we cannot support directly
     function transformUnsupportedSyntax() {
       return {
         visitor: {
-          // 转换 ** 幂运算符为 math.pow() 调用（Scratch 无原生幂运算积木）
+          // Rewrite the ** exponentiation operator into a math.pow() call (Scratch has no native exponentiation block)
           BinaryExpression(path: babel.NodePath<babel.types.BinaryExpression>) {
             if (path.node.operator === '**') {
               path.replaceWith(
@@ -34,11 +34,11 @@ const transformOptions: babel.TransformOptions = {
             }
           },
 
-          // 转换三元表达式 (condition ? expr1 : expr2) 为 if-else 语句
+          // Rewrite a ternary expression (condition ? expr1 : expr2) into an if/else statement
           ConditionalExpression(path: babel.NodePath<babel.types.ConditionalExpression>) {
             const { test, consequent, alternate } = path.node;
 
-            // 判断是否在条件上下文中（if/while/for 的条件部分）
+            // Is this part of a condition context (the test of an if/while/for)?
             const isInCondition = path.findParent((p: babel.NodePath) =>
               (p.isIfStatement() && (p.node as any).test === path.node) ||
               (p.isWhileStatement() && (p.node as any).test === path.node) ||
@@ -48,12 +48,12 @@ const transformOptions: babel.TransformOptions = {
               ))
             );
 
-            // 如果在条件上下文中，保持原样（让它作为 boolean 表达式）
+            // In a condition context, leave it alone (let it stand as a boolean expression)
             if (isInCondition) {
               return;
             }
 
-            // 获取需要替换的父节点
+            // Find the parent node we will be replacing
             const parent = path.findParent((p: babel.NodePath) =>
               p.isVariableDeclarator() ||
               p.isAssignmentExpression() ||
@@ -64,7 +64,7 @@ const transformOptions: babel.TransformOptions = {
 
             if (!parent) return;
 
-            // 创建临时变量名
+            // Name of the temporary variable
             const tempVar = babel.types.identifier('__jvavscratch_temp');
             const varDecl = babel.types.variableDeclaration('let', [
               babel.types.variableDeclarator(tempVar)
@@ -98,18 +98,20 @@ const transformOptions: babel.TransformOptions = {
               const returnStmt = babel.types.returnStatement(tempVar);
               parent.replaceWithMultiple([varDecl, ifStatement, returnStmt]);
             } else if (parent.isCallExpression() || parent.isBinaryExpression()) {
-              // 对于函数参数或二元表达式中的三元表达式，
-              // 需要找到最近的语句级父节点来替换
+              // For a ternary inside a function argument or a binary expression
+              // we have to find the nearest statement-level ancestor to replace
               const stmtPath = path.findParent((p: babel.NodePath) =>
                 p.isExpressionStatement() || p.isReturnStatement()
               );
               if (stmtPath && stmtPath.isExpressionStatement()) {
-                // 创建一个 IIFE 风格的替换：先计算 temp，再使用 temp
-                // 但由于 Scratch 限制，这里只能拆成多条语句
-                // 获取原始表达式的父节点中的其他部分需要更复杂的处理
-                // 简化处理：只替换当前条件表达式为 tempVar
+                // An IIFE-style rewrite would compute temp and then use temp,
+                // but Scratch's constraints force us to split this into several
+                // statements. Reaching the other parts of the original
+                // expression through its parent would need more elaborate
+                // handling, so we simplify: replace just this conditional
+                // expression with tempVar.
                 path.replaceWith(tempVar);
-                // 在语句前插入 varDecl 和 ifStatement
+                // Insert varDecl and ifStatement before the statement
                 stmtPath.insertBefore([varDecl, ifStatement]);
               } else if (stmtPath && stmtPath.isReturnStatement()) {
                 path.replaceWith(tempVar);
@@ -118,16 +120,16 @@ const transformOptions: babel.TransformOptions = {
             }
           },
 
-          // 转换非条件上下文中的 && / || 为三元表达式（保持 JS 短路语义）
+          // Rewrite && / || outside a condition context into a ternary (preserving JS short-circuit semantics)
           LogicalExpression(path: babel.NodePath<babel.types.LogicalExpression>) {
             const { operator, left, right } = path.node;
 
-            // 只处理 && 和 ||
+            // Only handle && and ||
             if (operator !== '&&' && operator !== '||') {
               return;
             }
 
-            // 判断是否在条件上下文中
+            // Is this part of a condition context?
             const isInCondition = path.findParent((p: babel.NodePath) =>
               (p.isIfStatement() && (p.node as any).test === path.node) ||
               (p.isWhileStatement() && (p.node as any).test === path.node) ||
@@ -137,12 +139,12 @@ const transformOptions: babel.TransformOptions = {
               ))
             );
 
-            // 如果在条件上下文中，保持原样
+            // In a condition context, leave it alone
             if (isInCondition) {
               return;
             }
 
-            // 转换为三元表达式
+            // Rewrite as a ternary expression
             if (operator === '&&') {
               path.replaceWith(
                 babel.types.conditionalExpression(
@@ -162,48 +164,48 @@ const transformOptions: babel.TransformOptions = {
             }
           },
           
-          // 转换 for 循环内的变量声明到循环外部
+          // Hoist variable declarations out of a for loop
           ForStatement(path: babel.NodePath<babel.types.ForStatement>) {
             const { init } = path.node;
             
-            // 检查 init 是否为变量声明（如 for(let i=0; ...)）
+            // Is init a variable declaration (as in for(let i=0; ...))?
             if (init?.type === 'VariableDeclaration' && init.kind !== 'var') {
-              // 创建相同的变量声明，提升到循环外部
+              // Build the same declaration so it can be hoisted outside the loop
               const outerVarDecl = babel.types.variableDeclaration(
                 init.kind,
                 [...init.declarations]
               );
               
-              // 在循环前插入变量声明
+              // Insert the declaration before the loop
               path.insertBefore(outerVarDecl);
               
-              // 将循环内的变量声明替换为赋值表达式
+              // Replace the declaration inside the loop with an assignment expression
               if (init.declarations.length === 1) {
                 const decl = init.declarations[0];
                 
-                // 确保 decl.id 不是 VoidPattern 或 ArrayPattern
+                // Make sure decl.id is neither a VoidPattern nor an ArrayPattern
                 if (babel.types.isVoidPattern(decl.id) || babel.types.isArrayPattern(decl.id)) {
                   return;
                 }
                 
                 if (decl.init) {
-                  // 只保留赋值部分
+                  // Keep only the assignment half
                   path.node.init = babel.types.assignmentExpression(
                     '=',
                     decl.id as babel.types.LVal,
                     decl.init
                   );
                 } else {
-                  // 如果没有初始化器，则使用标识符
+                  // With no initialiser, fall back to the identifier itself
                   path.node.init = decl.id as babel.types.Expression;
                 }
               }
             }
           },
 
-          // 转换列表访问语法 myList[index] -> list.getItem("myList", index)
-          // 转换列表长度语法 myList.length -> list.length("myList")
-          // 转换 Math.PI -> math.pi()
+          // Rewrite list indexing syntax myList[index] -> list.getItem("myList", index)
+          // Rewrite list length syntax myList.length -> list.length("myList")
+          // Rewrite Math.PI -> math.pi()
           MemberExpression(path: babel.NodePath<babel.types.MemberExpression>) {
             const { node } = path;
             if (!babel.types.isIdentifier(node.object)) return;
@@ -246,7 +248,7 @@ const transformOptions: babel.TransformOptions = {
             }
           },
 
-          // 转换 Math.xxx() 标准数学函数调用
+          // Rewrite Math.xxx() calls to the standard maths functions
           CallExpression(path: babel.NodePath<babel.types.CallExpression>) {
             const { node } = path;
             if (!babel.types.isMemberExpression(node.callee)) return;
@@ -313,7 +315,7 @@ const transformOptions: babel.TransformOptions = {
             }
           },
 
-          // 转换列表赋值语法 myList[index] = value -> list.replace("myList", index, value)
+          // Rewrite list assignment syntax myList[index] = value -> list.replace("myList", index, value)
           AssignmentExpression(path: babel.NodePath<babel.types.AssignmentExpression>) {
             const { node } = path;
             if (!babel.types.isMemberExpression(node.left)) return;
@@ -347,9 +349,9 @@ const transformOptions: babel.TransformOptions = {
 };
 
 /**
- * 将代码中的不支持语法转换为支持的语法
- * @param code 原始代码
- * @returns 转换后的代码
+ * Rewrites unsupported syntax in a piece of code into syntax we can compile.
+ * @param code The original code
+ * @returns The transformed code
  */
 export function transformSyntax(code: string): string {
   try {
@@ -357,15 +359,15 @@ export function transformSyntax(code: string): string {
     return result?.code || code;
   } catch (error) {
     console.error('Syntax transformation error:', error);
-    // 如果转换失败，返回原始代码
+    // If the transformation fails, return the original code
     return code;
   }
 }
 
 /**
- * 转换 AST 节点中的不支持语法
- * @param node AST 节点
- * @returns 转换后的 AST 节点
+ * Rewrites unsupported syntax inside an AST node.
+ * @param node The AST node
+ * @returns The transformed AST node
  */
 export function transformAST(node: Node): Node {
   try {
@@ -373,7 +375,7 @@ export function transformAST(node: Node): Node {
     return result?.ast || node;
   } catch (error) {
     console.error('AST transformation error:', error);
-    // 如果转换失败，返回原始节点
+    // If the transformation fails, return the original node
     return node;
   }
 }

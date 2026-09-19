@@ -14,35 +14,43 @@ import { tmpdir } from "os";
 import { join } from "path";
 
 /**
- * 单次构建的中间状态目录。
+ * The intermediate state directory for a single build.
  *
- * 背景:编译过程有一批**可变**的中间文件 —— `fn.json`(函数登记表)、
- * `classData.json`(类登记表)、`broadcasts.json`、`variables.json`、
- * `lists.json`。CLI 在构建开始时把它们清空,生成器在编译过程中边读边写。
+ * Background: compilation keeps a set of **mutable** intermediate files --
+ * `fn.json` (the function registry), `classData.json` (the class registry),
+ * `broadcasts.json`, `variables.json` and `lists.json`. The CLI empties them at
+ * the start of a build, and generators read from and write to them as
+ * compilation proceeds.
  *
- * 拆分前这批文件躺在 `src/assets/`,而 `cli` 和 `generator` 分别用
- * **各自包内**的 `__dirname` 相对路径去找它们(`../assets` / `../../assets`)。
- * 这带来三个问题:
+ * Before the split, these files lived in `src/assets/`, and `cli` and
+ * `generator` each located them through a relative path off their **own**
+ * package's `__dirname` (`../assets` / `../../assets`). That caused three
+ * problems:
  *
- * 1. 仓库拆开后两边的相对路径必然指向不同位置,构建直接失败;
- * 2. 写的是**包自身的安装目录** —— 全局安装或只读挂载时直接 EACCES,
- *    而且会污染被 `npm install` 下来的包;
- * 3. 路径固定,所以**并发构建会互相清空对方的状态**,产出错乱的工程。
+ * 1. Once the repository was split, the two sides' relative paths were bound to
+ *    point at different locations and the build failed outright;
+ * 2. The files were written into the **package's own installation directory**
+ *    -- an immediate EACCES under a global install or a read-only mount, and it
+ *    also polluted whatever `npm install` had unpacked;
+ * 3. The path was fixed, so **concurrent builds wiped out each other's state**
+ *    and produced garbled projects.
  *
- * 改为:CLI 在构建开始时 `mkdtempSync` 出一个独立目录并通过
- * {@link setBuildScratchDir} 告知本模块,生成器一律经 {@link scratchFile}
- * 取路径,构建结束在 `finally` 里整体删除。未显式设置时(单独调用生成器,
- * 例如跑测试)惰性创建一个进程级目录,行为仍然正确。
+ * The fix: at the start of a build the CLI `mkdtempSync`s a dedicated directory
+ * and hands it to this module through {@link setBuildScratchDir}; generators
+ * always resolve their paths via {@link scratchFile}, and the directory is
+ * removed in one go from a `finally` when the build ends. When nothing has been
+ * set explicitly (invoking a generator on its own, as a test would), a
+ * process-wide directory is created lazily and the behaviour is still correct.
  */
 
 let scratchDir: string | null = null;
 
-/** 指定本次构建的临时目录。由 CLI 在构建开始时调用。 */
+/** Sets the scratch directory for this build. Called by the CLI when a build starts. */
 export function setBuildScratchDir(dir: string): void {
     scratchDir = dir;
 }
 
-/** 当前构建的临时目录;未设置则惰性创建一个进程级目录。 */
+/** The scratch directory for the current build; created lazily as a process-wide directory when unset. */
 export function getBuildScratchDir(): string {
     if (!scratchDir) {
         scratchDir = mkdtempSync(join(tmpdir(), "jvavscratch-build-"));
@@ -50,12 +58,12 @@ export function getBuildScratchDir(): string {
     return scratchDir;
 }
 
-/** 本次构建中间状态文件的绝对路径,如 `scratchFile("fn.json")`。 */
+/** Absolute path of an intermediate state file for this build, e.g. `scratchFile("fn.json")`. */
 export function scratchFile(name: string): string {
     return join(getBuildScratchDir(), name);
 }
 
-/** 清空已记录的临时目录引用(测试用,便于验证惰性创建分支)。 */
+/** Clears the recorded scratch directory reference (for tests, so the lazy-creation branch can be exercised). */
 export function resetBuildScratchDir(): void {
     scratchDir = null;
 }

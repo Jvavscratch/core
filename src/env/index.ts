@@ -1,3 +1,3 @@
-// 导出env模块的所有文件
+// Re-exports every file in the env module
 export * from './parseProgram';
 export * from './transformSyntax';

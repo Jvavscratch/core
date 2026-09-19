@@ -10,7 +10,8 @@ const tsJestTransformCfg = createDefaultPreset({
 module.exports = {
   testEnvironment: "node",
   roots: ["<rootDir>/tests"],
-  // 直接映射到兄弟包的源码，这样跑测试前不必先 build 一遍 types。
+  // Map straight to the sibling package's source so the tests can run without
+  // building `types` first.
   moduleNameMapper: {
     "^@jvavscratch/([^/]+)$": "<rootDir>/../$1/src/index.ts",
   },

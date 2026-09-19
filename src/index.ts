@@ -1,4 +1,4 @@
-// jvavscratch 核心:AST → Scratch 派发、语法变换、错误与注册表
+// jvavscratch core: AST → Scratch dispatch, syntax transformation, errors and the registry
 export * from './env/parseProgram';
 export * from './env/transformSyntax';
 export * from './util/blocks';

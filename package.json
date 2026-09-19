@@ -1,7 +1,7 @@
 {
   "name": "@jvavscratch/core",
   "version": "1.0.0",
-  "description": "jvavscratch 核心编译器：AST → Scratch 派发、语法变换、错误与生成器注册表",
+  "description": "Core compiler for jvavscratch: AST-to-Scratch dispatch, syntax transforms, errors, and the generator registry",
   "license": "MPL-2.0",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

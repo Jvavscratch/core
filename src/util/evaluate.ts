@@ -22,7 +22,7 @@ export function evaluate(type: string, blockCluster: BlockCluster, instance: any
     let s = false;
     let packageData = buildData.packages;
 
-    // 第三方运行时包优先,保持原有语义(可覆盖内置生成器)
+    // Third-party runtime packages take precedence, preserving the original semantics (they may override the built-in generators)
     for (let i = 0; i < packageData.type_implements.length; i++) {
         if (packageData.type_implements[i].name == type) {
             data = packageData.type_implements[i].body;
@@ -34,9 +34,11 @@ export function evaluate(type: string, blockCluster: BlockCluster, instance: any
     if (!s) {
         data = getType(type);
 
-        // 原实现在这里只 console.error 然后继续,于是下一行 data(...) 抛出
-        // 一个与真实原因毫无关系的 TypeError。改为直接抛 JvavscratchError,
-        // 把「哪个类型没有实现」原样带给用户。
+        // The original implementation only logged a console.error here and then
+        // carried on, so the data(...) call below threw a TypeError with no
+        // relation whatsoever to the real cause. We construct a
+        // JvavscratchError instead, handing the user the exact type that has no
+        // implementation.
         if (!data) {
             let loc = instance?.loc;
             new JvavscratchError(

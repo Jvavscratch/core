@@ -1,7 +1,7 @@
 /*******************************************************************
 * Copyright         : 2024 saaawdust
 * File Name         : registry.ts
-* Description       : 生成器派发注册表
+* Description       : Generator dispatch registry
 *
 * Revision History  :
 * Date        Author          Comments
@@ -10,30 +10,38 @@
 /******************************************************************/
 
 /**
- * 生成器注册表。
+ * The generator registry.
  *
- * 为什么需要这张表:`core` 负责把 AST 派发给具体生成器,但依赖方向是
- * `types ← core ← utils ← generator ← cli`,所以 `core` **不能**静态依赖
- * `generator`。原先的实现是按路径拼字符串去 `require(join(__dirname,
- * "../generator/" + node.type))`,仓库拆开后这个相对路径必然指空。
+ * Why this table exists: `core` is responsible for dispatching AST nodes to a
+ * concrete generator, but the dependency direction is
+ * `types ← core ← utils ← generator ← cli`, so `core` **cannot** statically
+ * depend on `generator`. The original implementation built a path by string
+ * concatenation and called `require(join(__dirname, "../generator/" +
+ * node.type))`; once the repository was split up, that relative path was bound
+ * to point nowhere.
  *
- * 现在改成反转:内置生成器由 `@jvavscratch/generator` 在导入时自行注册进
- * 这里,`core` 只按名字查表。附带好处是内置生成器与第三方运行时包从此走
- * **同一条**注册通路,并且彻底消除了原先那类「按 `.ts` 拼路径」的静默失败
- * —— 编译产物是 `.js`,`existsSync("Foo.ts")` 恒为 false,于是整类节点被
- * 无声跳过(见 `ExpressionStatement` / `CallExpression` / `types/CallExpression`)。
+ * The relationship is now inverted: the built-in generators register themselves
+ * here when `@jvavscratch/generator` is imported, and `core` merely looks them
+ * up by name. As a side benefit, built-in generators and third-party runtime
+ * packages now travel **the same** registration path, and the old class of
+ * silent failure caused by gluing a `.ts` extension onto a path is gone for
+ * good -- the compiled artifact is `.js`, so `existsSync("Foo.ts")` was always
+ * false and entire node types were skipped without a word (see
+ * `ExpressionStatement` / `CallExpression` / `types/CallExpression`).
  *
- * 优先级保持不变:第三方运行时包的 `statement_implements` /
- * `type_implements` **先**查(可覆盖内置),查不到再落到本表。
+ * Precedence is unchanged: a third-party runtime package's
+ * `statement_implements` / `type_implements` are consulted **first** (they may
+ * override the built-ins), and only on a miss does the lookup fall through to
+ * this table.
  */
 
-/** 语句生成器:`(blockCluster, node, buildData) => generatedData` */
+/** Statement generator: `(blockCluster, node, buildData) => generatedData` */
 export type StatementGenerator = (blockCluster: any, node: any, buildData: any) => any;
 
-/** 值生成器:`(blockCluster, node, parentId, buildData) => typeData` */
+/** Value generator: `(blockCluster, node, parentId, buildData) => typeData` */
 export type TypeGenerator = (blockCluster: any, node: any, parentId: string, buildData: any) => any;
 
-/** 库函数表:`{ 函数名: 实现 }`,如 `{ move: (…) => …, turnRight: (…) => … }` */
+/** Library function table: `{ fnName: implementation }`, e.g. `{ move: (…) => …, turnRight: (…) => … }` */
 export type LibraryTable = { [fnName: string]: (...args: any[]) => any };
 
 const statements = new Map<string, StatementGenerator>();
@@ -41,43 +49,44 @@ const types = new Map<string, TypeGenerator>();
 const blockLibraries = new Map<string, LibraryTable>();
 const valueLibraries = new Map<string, LibraryTable>();
 
-/** 注册一个语句生成器,名字用 AST 节点类型(如 `IfStatement`)。 */
+/** Registers a statement generator. The name is the AST node type (e.g. `IfStatement`). */
 export function registerStatement(name: string, fn: StatementGenerator): void {
     statements.set(name, fn);
 }
 
-/** 取语句生成器,未注册返回 `undefined`。 */
+/** Looks up a statement generator; returns `undefined` when none is registered. */
 export function getStatement(name: string): StatementGenerator | undefined {
     return statements.get(name);
 }
 
-/** 注册一个值生成器,名字用 AST 节点类型(如 `NumericLiteral`)。 */
+/** Registers a value generator. The name is the AST node type (e.g. `NumericLiteral`). */
 export function registerType(name: string, fn: TypeGenerator): void {
     types.set(name, fn);
 }
 
-/** 取值生成器,未注册返回 `undefined`。 */
+/** Looks up a value generator; returns `undefined` when none is registered. */
 export function getType(name: string): TypeGenerator | undefined {
     return types.get(name);
 }
 
 /**
- * 注册一个库函数表。
+ * Registers a library function table.
  *
- * @param kind `"block"` 走 `CallExpressionSub/`(作为语句),`"value"` 走
- *             `types/CallExpressionSub/`(作为取值)
- * @param name 库名,对应 `new` 出来的实例名 / 命名空间名
+ * @param kind `"block"` goes through `CallExpressionSub/` (as a statement);
+ *             `"value"` goes through `types/CallExpressionSub/` (as a value)
+ * @param name The library name, matching the name of the instance produced by
+ *             `new` / the namespace name
  */
 export function registerLibrary(kind: "block" | "value", name: string, table: LibraryTable): void {
     (kind === "block" ? blockLibraries : valueLibraries).set(name, table);
 }
 
-/** 取库函数表,未注册返回 `undefined`。 */
+/** Looks up a library function table; returns `undefined` when none is registered. */
 export function getLibrary(kind: "block" | "value", name: string): LibraryTable | undefined {
     return (kind === "block" ? blockLibraries : valueLibraries).get(name);
 }
 
-/** 各表已注册数量,供自检 / 测试断言用。 */
+/** Number of registrations in each table, for self-checks / test assertions. */
 export function registeredCounts() {
     return {
         statements: statements.size,
@@ -87,7 +96,7 @@ export function registeredCounts() {
     };
 }
 
-/** 清空注册表。仅供测试使用。 */
+/** Clears the registry. For tests only. */
 export function clearRegistry(): void {
     statements.clear();
     types.clear();
