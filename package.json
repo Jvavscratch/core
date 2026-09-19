@@ -1,31 +1,54 @@
 {
   "name": "@jvavscratch/core",
   "version": "1.0.0",
-  "description": "jvavscratch核心编译器模块",
+  "description": "jvavscratch 核心编译器：AST → Scratch 派发、语法变换、错误与生成器注册表",
+  "license": "MPL-2.0",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "require": "./dist/index.js",
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "import": "./dist/index.js"
     },
     "./env": {
-      "require": "./dist/src/env/index.js",
-      "import": "./dist/src/env/index.js",
-      "types": "./dist/src/env/index.d.ts"
+      "types": "./dist/env/index.d.ts",
+      "require": "./dist/env/index.js",
+      "import": "./dist/env/index.js"
     },
     "./util": {
-      "require": "./dist/src/util/index.js",
-      "import": "./dist/src/util/index.js",
-      "types": "./dist/src/util/index.d.ts"
+      "types": "./dist/util/index.d.ts",
+      "require": "./dist/util/index.js",
+      "import": "./dist/util/index.js"
+    },
+    "./registry": {
+      "types": "./dist/util/registry.d.ts",
+      "require": "./dist/util/registry.js",
+      "import": "./dist/util/registry.js"
     }
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
-    "build": "tsc"
+    "build": "tsc",
+    "dev": "tsc -w",
+    "test": "jest",
+    "prepare": "tsc"
   },
   "dependencies": {
+    "@babel/parser": "^7.23.6",
     "@babel/types": "^7.23.6",
-    "@jvavscratch/types": "^1.0.1"
+    "@jvavscratch/types": "github:Jvavscratch/types",
+    "chalk": "^4.1.2"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.11",
+    "@types/node": "^20.11.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.1",
+    "typescript": "^5.3.3"
   }
 }

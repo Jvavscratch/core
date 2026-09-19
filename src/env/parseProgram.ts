@@ -1,26 +1,22 @@
-﻿/*******************************************************************
+/*******************************************************************
 * Copyright         : 2024 saaawdust
 * File Name         : parseProgram.ts
-*
 * Description       : Creates a Scratch-AST
-*                    
-* Revision History  :
-* Date		Author 			Comments
-* ------------------------------------------------------------------
-\n* 11/27/2025\tNeuronPulse\tModified\n* * 2024		AI Assistant	Added syntax transformation support
 *
+* Revision History  :
+* Date        Author          Comments
+* ------------------------------------------------------------------
+* 10/12/2025  NeuronPulse     Modified
 /******************************************************************/
 
 import { BlockStatement } from "@babel/types";
 import * as babel from "@babel/parser"
 import { BlockCluster, createBlock } from "../util/blocks";
-import { BlockOpCode, generatedData } from "../util/types";
-import { Error, ErrorPosition, Warn } from "../util/err";
-import chalk from "chalk";
-import { existsSync } from "fs";
-import { join } from "path";
-import { getScratchType, getVariable, ScratchType } from "../util/scratch-type";
-import { includes, uuid } from "../util/scratch-uuid";
+import { BlockOpCode, generatedData } from "@jvavscratch/types";
+import { JvavscratchError, ErrorPosition, Warn } from "../util/err";
+import { getScratchType, getVariable, ScratchType } from "@jvavscratch/types";
+import { includes, uuid } from "@jvavscratch/types";
+import { getStatement } from "../util/registry";
 import { transformSyntax } from "./transformSyntax";
 
 function extractSubstringFromCode(code: string, line: number) {
@@ -120,23 +116,24 @@ function parseFunctionCall(str: string): ParsedFunctionCall {
     };
 }
 
-let FILE_CONTENT = ""
 export function parseProgram(string: string | BlockStatement, sourceFilename: string, includeHat: boolean, packageData: { [key: string]: any },  metadata?: { [key: string]: any }) {
     let program
     let file;
     let firstIndex = ""
+    let originalSource = "";
 
     if (!metadata) {
         metadata = {};
     }
 
-    if (includeHat) {
-        FILE_CONTENT = string as string;
+    if (includeHat && typeof string === "string") {
+        originalSource = string;
     }
-    
+
     if (typeof (string) == "string") {
         try {
-            // 鍏堣浆鎹笉鏀寔鐨勮娉曚负鏀寔鐨勮娉?            const transformedCode = transformSyntax(string);
+            // 先转换不支持的语法为支持的语法
+            const transformedCode = transformSyntax(string);
             file = babel.parse(transformedCode, { sourceFilename });
             program = file.program.body;
         } catch (error: any) {
@@ -149,7 +146,7 @@ export function parseProgram(string: string | BlockStatement, sourceFilename: st
                     message: "There is a syntax error in your code. Make sure all your code is valid.",
                 };
 
-                new Error(`Babel syntax error: '${error.reasonCode}'`, string, [errorPos], sourceFilename);
+                new JvavscratchError(`Babel syntax error: '${error.reasonCode}'`, string, [errorPos], sourceFilename);
             }
 
             process.exit();
@@ -201,7 +198,7 @@ export function parseProgram(string: string | BlockStatement, sourceFilename: st
     
                     case BlockOpCode.EventWhenBackdropSwitchesTo:
                         initBlock.opcode = BlockOpCode.EventWhenBackdropSwitchesTo;
-                        initBlock.fields = { "BACKDROP": [parsedFunc[0] || "backdrop1"] };
+                        initBlock.fields = { "BACKDROP": [parsedFunc.args[0]?.value || "backdrop1"] };
                         break;
     
                     case BlockOpCode.EventWhenGreaterThan:
@@ -251,27 +248,33 @@ export function parseProgram(string: string | BlockStatement, sourceFilename: st
     let lastKey = includeHat && initHat || null;
 
     for (let i = 0; i < program.length; i++) {
-        let fileData = join(__dirname, "../", `generator/${program[i].type}`);
-        if (program[i].type == "EmptyStatement") continue;
+        let nodeType = program[i].type;
+        if (nodeType == "EmptyStatement") continue;
         let data: any;
 
+        // 第三方运行时包优先,保持原有语义(可覆盖内置生成器)。
+        //
+        // 注意循环变量名:原实现内层也用 `i`,遮蔽了外层语句下标,于是
+        // `program[i]` 取的是**实现表的第 i 项**而不是第 i 条语句 —— 配对
+        // 完全错位,只有下标偶然对齐时才命中。这里改用独立的 `k`。
         let s = false;
-        for (let i = 0; i < packageData.implements.length; i++) {
-            if (packageData.implements[i].name == program[i].type) {
-                data = packageData.implements[i].body;
+        for (let k = 0; k < packageData.statement_implements.length; k++) {
+            if (packageData.statement_implements[k].name == nodeType) {
+                data = packageData.statement_implements[k].body;
                 s = true;
                 break;
             }
         }
 
-        if (!existsSync(fileData + ".ts") && !s) {
-            Warn(`No \`impl\` for '${program[i].type}'`);
-            continue;
-        } else if (!s) {
-            data = require(fileData);
+        if (!s) {
+            data = getStatement(nodeType);
+            if (!data) {
+                Warn(`No \`impl\` for '${nodeType}'`);
+                continue;
+            }
         }
 
-        data = data(blockCluster, program[i], { instruction: i, originalSource: FILE_CONTENT, packages: packageData, ...metadata });
+        data = data(blockCluster, program[i], { instruction: i, originalSource, packages: packageData, listIndexBase: metadata?.listIndexBase || 1, ...metadata });
         if (!data) continue;
         if (data.err) continue;
         if (data.doNotParent) continue;
