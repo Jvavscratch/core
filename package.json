@@ -39,6 +39,7 @@
     "prepare": "tsc"
   },
   "dependencies": {
+    "@babel/core": "^7.29.0",
     "@babel/parser": "^7.23.6",
     "@babel/types": "^7.23.6",
     "@jvavscratch/types": "github:Jvavscratch/types",
